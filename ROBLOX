@@ -1,0 +1,96 @@
+-- AKI CAR PUSH | generic client physics prototype, not game-verified.
+-- Execute the whole file in a client context. No external downloads.
+-- Detects VehicleSeats within 35 studs. Custom seatless cars need adaptation.
+-- ApplyImpulse cannot move server-owned/anchored assemblies from this client.
+-- State is read-only: does not replay firesignal or invent server requests.
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local Tween = game:GetService("TweenService")
+local RS = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+assert(player, "Run in a client context")
+local pg = player:WaitForChild("PlayerGui")
+local old = pg:FindFirstChild("AKICarPush")
+if old then old:Destroy() end
+local connections, alive = {}, true
+local function bind(event, fn)
+    local c = event:Connect(fn)
+    table.insert(connections, c)
+    return c
+end
+local function make(class, props, parent)
+    local obj = Instance.new(class)
+    for k,v in pairs(props) do obj[k] = v end
+    obj.Parent = parent
+    return obj
+end
+local accent = Color3.fromRGB(78, 224, 189)
+local function round(obj, radius)
+    make("UICorner", {CornerRadius = UDim.new(0, radius or 12)}, obj)
+end
+local gui = make("ScreenGui", {
+    Name="AKICarPush", ResetOnSpawn=false,
+    ZIndexBehavior=Enum.ZIndexBehavior.Sibling, DisplayOrder=50
+}, pg)
+local panel = make("Frame", {
+    Size=UDim2.fromOffset(320,370), Position=UDim2.new(0.5,-160,0.5,-185),
+    BackgroundColor3=Color3.fromRGB(18,23,32), BorderSizePixel=0
+}, gui)
+round(panel,18)
+make("UIStroke", {Color=Color3.fromRGB(53,73,83),Thickness=1}, panel)
+local function label(text,y,h,size,color)
+    return make("TextLabel", {
+        Position=UDim2.fromOffset(20,y),Size=UDim2.new(1,-40,0,h),
+        BackgroundTransparency=1,Text=text,TextColor3=color or Color3.fromRGB(225,233,242),
+        Font=Enum.Font.Gotham,TextSize=size or 13,
+        TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true
+    },panel)
+end
+local title = label("AKI  /  CAR PUSH",14,32,18,accent)
+title.Font=Enum.Font.GothamBold
+title.Size=UDim2.new(1,-100,0,32)
+title.Active=true
+label("CLIENT PHYSICS PROTOTYPE",49,18,10,Color3.fromRGB(135,150,170))
+local close=make("TextButton",{
+    Text="×",TextSize=24,Font=Enum.Font.Gotham,
+    TextColor3=Color3.fromRGB(200,210,220),BackgroundTransparency=1,
+    Position=UDim2.new(1,-48,0,14),Size=UDim2.fromOffset(32,32)
+},panel)
+local targetLabel=label("TARGET  /  Scanning nearby vehicles…",83,40,13)
+local strength=40
+local strengthLabel=label("PUSH STRENGTH  /  40",134,24,12)
+local track=make("TextButton",{
+    Text="",AutoButtonColor=false,Position=UDim2.fromOffset(20,169),
+    Size=UDim2.new(1,-40,0,14),BackgroundColor3=Color3.fromRGB(43,54,67),
+    BorderSizePixel=0
+},panel)
+round(track,7)
+local fill=make("Frame",{
+    Size=UDim2.fromScale(30/90,1),BackgroundColor3=accent,BorderSizePixel=0
+},track)
+round(fill,7)
+local push=make("TextButton",{
+    Text="PUSH NEAREST CAR",Font=Enum.Font.GothamBold,TextSize=14,
+    Position=UDim2.fromOffset(20,204),Size=UDim2.new(1,-40,0,46),
+    BackgroundColor3=accent,TextColor3=Color3.fromRGB(15,32,31),BorderSizePixel=0
+},panel)
+round(push,12)
+local status=label("Ready • Stand near a car, then push.",261,37,12)
+local stats=label("Cash / Skill: waiting for next state update",307,24,10,Color3.fromRGB(145,160,180))
+label("Range: 35 studs • Server ownership may block motion",337,18,9,Color3.fromRGB(119,135,152))
+local highlight=make("Highlight",{
+    FillColor=accent,FillTransparency=0.85,OutlineColor=accent,
+    DepthMode=Enum.HighlightDepthMode.Occluded,Enabled=false
+},gui)
+local seats={}
+for _,obj in ipairs(workspace:GetDescendants()) do
+    if obj:IsA("VehicleSeat") then seats[obj]=true end
+end
+bind(workspace.DescendantAdded,function(obj)
+    if obj:IsA("VehicleSeat") then seats[obj]=true end
+end)
+bind(workspace.DescendantRemoving,function(obj) seats[obj]=nil end)
+local function nearest()
+    local char=player.Character
+    local hrp=char and char:FindFirstChild("HumanoidRootPart")
